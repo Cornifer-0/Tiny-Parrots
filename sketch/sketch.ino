@@ -1,7 +1,7 @@
 // Arduino microcontroller code for the MCU
 
-#include <ArduinoBridge.h>
 
+#include "Arduino_RouterBridge.h"
 const int BUTTON_PIN = 2;
 bool lastState = HIGH;
 

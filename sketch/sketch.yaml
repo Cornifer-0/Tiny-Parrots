@@ -1,0 +1,4 @@
+profiles:
+  default:
+    fqbn: "arduino:zephyr:unoq"
+default_profile: "default"
