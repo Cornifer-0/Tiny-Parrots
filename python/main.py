@@ -1,35 +1,32 @@
-import cv2;
-import pyaudio
-import wave
-from arduino_bridge import Bridge
-from edge_impulse_linux.image import ImageImpulseRunner
+import time
+
+from arduino.app_utils import App, Bridge
+from utils import play_audio, record_frame, record_audio, stop_recording
 
 
-# Load the model
-runner = ImageImpulseRunner("model/parrot_model.eim")
-runner.init()
+print("Hello world!")
 
 
-# Grab the first camera
-camera = cv2.VideoCapture(0)
+def loop():
+    """This function is called repeatedly by the App framework."""
+    # You can replace this with any code you want your App to run repeatedly.
+    time.sleep(0.1)
 
 
-# Just debugging for now
-def on_button_event(state):
-    if state == "pressed":
-        print("Recording audio...")
-    elif state == "realased":
-        print("Saving audio...")
+def on_button_event(but):
+    if but == "A_pressed":
+        play_audio()
+    elif but == "B_pressed":
+        record_frame()
+    elif but == "C_pressed":
+        record_audio()
+    elif but == "C_released":
+        stop_recording()
+    
 
+Bridge.notify("set_status", "idle")
 
-# Connect to MCU bridge listener
-bridge = Bridge()
-bridge.on("button_event", on_button_event)
+Bridge.provide("button_event", on_button_event)
 
-
-while True:
-    # Keep checking MCU events
-    bridge.poll() # 
-
-
-    #TODO: Add the image recognition things...
+# See: https://docs.arduino.cc/software/app-lab/tutorials/getting-started/#app-run
+App.run(user_loop=loop)
