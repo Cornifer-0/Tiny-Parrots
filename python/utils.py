@@ -1,11 +1,9 @@
-import os
-import re
 import time
 import signal
 import subprocess
 from pathlib import Path
 import cv2
-from arduino.app_utils import App, Bridge
+from arduino.app_utils import Bridge
 
 # Permanent ALSA Hardware
 PLAYBACK_HW = "plughw:CARD=EarPods,DEV=0"
@@ -31,51 +29,83 @@ _audio_output_path = audio_veu
 
 #  CAMERA  
 
-""" Fa una foto i la guarda a la carpeta de fotos"""
-""" Retorna {bool, string} true si hi ha exit, retorna on s'ha guardat o l'error que hi ha hagut"""
-
 "Mirem tots els possibles fitxers on linux hauria pogut assignar la camera /dev/video0-2"
+"Aquesta funcion nomes s'executa completa una vegada ( la primera ) despres es guarda el fitxer de la camera a GLOBAL_CAP"
 
-def record_frame(output_path="/app/fotos/foto.jpg"):
-    out_file = Path(output_path)
-    out_file.parent.mkdir(parents=True, exist_ok=True)
+GLOBAL_CAP = None
+def _get_camera_handle():
+    global GLOBAL_CAP
+    
+    # Return existing open camera if valid
+    if GLOBAL_CAP is not None and GLOBAL_CAP.isOpened():
+        return GLOBAL_CAP
 
+    # Try /dev/video0-2 on first start only
     for idx in range(3):
         cap = cv2.VideoCapture(idx, cv2.CAP_V4L2)
         if not cap.isOpened():
             cap.release()
             continue
 
-        # Posar MJPEG resolution
         cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
 
-        # S'ha de deixar temps a que el sensor de llum tinc exposicio
-        time.sleep(0.5)
-        valid_frame = None
-        for _ in range(5):
-            ret, frame = cap.read()
-            if ret and frame is not None and frame.size > 0:
-                valid_frame = frame
+        # Warm up sensor ONCE on cold startup
+        #time.sleep(0.2)
+        for _ in range(20):
+            cap.read()
 
+        ret, frame = cap.read()
+        if ret and frame is not None and frame.size > 0:
+            print(f"[CAM LOG] Càmera inicialitzada correctament a /dev/video{idx}")
+            GLOBAL_CAP = cap
+            return GLOBAL_CAP
+        
         cap.release()
 
-        if valid_frame is not None:
-            cv2.imwrite(str(out_file), valid_frame, [cv2.IMWRITE_JPEG_QUALITY, 95])
-            print(f"[CAM LOG] Foto guardada a {out_file} ({out_file.stat().st_size} bytes) des de /dev/video{idx}")
-            return True, str(out_file)
-
     print("[CAM LOG] Error: No s'ha pogut obrir la càmera a /dev/video0-2")
-    return False, "Càmera no trobada"
+    return None
 
 
+
+""" Fa una foto i la retorna"""
+def record_frame():
+    Bridge.notify("set_status", "happy")
+
+    cap = _get_camera_handle()
+    if cap is None:
+        Bridge.notify("set_status", "idle")
+        return None
+
+    # Flush some previous frames, while the audio might have been playing or something else might have been happening .
+    for _ in range(4):
+        cap.grab()
+
+    ret, frame = cap.read()
+
+    Bridge.notify("set_status", "idle")
+
+    if ret and frame is not None and frame.size > 0:
+
+        frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE) # The camera is physically rotated 90 degrees, so we have to correct it.
+        
+        out_file = Path("/app/fotos/foto.jpg")
+        out_file.parent.mkdir(parents=True, exist_ok=True)
+        cv2.imwrite(str(out_file), frame, [cv2.IMWRITE_JPEG_QUALITY, 75])
+        return frame
+
+    return None
+
+
+    
 #  AUDIO PLAYBACK
 
 """Troba la card que es pot reproduir sorolll"""
 
 def _play_wav_aplay(file_path):
     # Unmute controls
+    """
     try:
         subprocess.run(
             ["amixer", "-c", PLAYBACK_CARD, "sset", "PCM", "100%", "unmute"],
@@ -83,28 +113,45 @@ def _play_wav_aplay(file_path):
         )
     except Exception as ex:
         print(f"[AUDIO LOG] Avís en ajustar volum: {ex}")
-
+    """
+    
     # Play audio stream via plughw
     cmd = ["aplay", "-D", PLAYBACK_HW, str(file_path)]
     res = subprocess.run(cmd, capture_output=True, text=True)
     return res.returncode == 0
 
-def play_audio():
+def play_audio(filename=None):
     Bridge.notify("set_status", "playing")
     try:
-        if audio_veu.exists():
-            print(f"[AUDIO LOG] Intentant reproduir: {audio_veu}")
-            _play_wav_aplay(audio_veu)
-        elif audio_beep.exists():
-            print(f"[AUDIO LOG] Intentant reproduir: {audio_beep}")
-            _play_wav_aplay(audio_beep)
+        target_file = None
+
+        if filename:
+            # Ensure .wav extension
+            wav_name = filename if filename.endswith(".wav") else f"{filename}.wav"
+            candidate = AUDIO_DIR / wav_name
+            
+            if candidate.exists():
+                target_file = candidate
+            else:
+                print(f"[AUDIO LOG] Fitxer especificat no trobat: {candidate}")
+
+        # Fallback if no filename passed or requested file wasn't found
+        if not target_file:
+            if audio_beep.exists():
+                target_file = audio_beep
+            #elif audio_beep.exists():
+             #   target_file = audio_beep
+
+        if target_file and target_file.exists():
+            #print(f"[AUDIO LOG] Intentant reproduir: {target_file}")
+            _play_wav_aplay(target_file)
         else:
-            print(f"[AUDIO LOG] No hi ha cap fitxer d'àudio a {AUDIO_DIR}")
+            print(f"[AUDIO LOG] No hi ha cap fitxer d'àudio vàlid a {AUDIO_DIR}")
+
     except Exception as e:
         print(f"[AUDIO LOG] Excepció en play_audio: {e}")
-
-    Bridge.notify("set_status", "idle")
-
+    finally:
+        Bridge.notify("set_status", "idle")
 
 #  AUDIO RECORDING
 
@@ -152,6 +199,8 @@ def record_audio(output_path=str(audio_veu)):
 def stop_recording():
     global _proc_audio, _audio_output_path
 
+    Bridge.notify("set_status", "idle")
+    
     if _proc_audio is None or _proc_audio.poll() is not None:
         _proc_audio = None
         print("[REC LOG] No hi havia cap gravació activa")
@@ -171,3 +220,32 @@ def stop_recording():
 
     print("[REC LOG] Error: Fitxer audio buit o no generat")
     return False, "Fitxer audio buit o no generat"
+
+# Speaking text
+
+TEMP_TTS_WAV = Path("/tmp/tts_parrot.wav")
+
+def speak_text(text, pitch=90, speed=160):
+    """Generates an offline synthetic parrot voice and plays it via aplay."""
+    try:
+        # 1. Render speech to a temporary .wav file
+        cmd_synth = [
+            "espeak-ng",
+            "-p", str(pitch),   # Pitch (0-99, default 50)
+            "-s", str(speed),   # Speed in words per min (default ~175)
+            "-w", str(TEMP_TTS_WAV),
+            text
+        ]
+        res = subprocess.run(cmd_synth, capture_output=True, text=True)
+        
+        if res.returncode != 0:
+            print(f"[TTS ERROR] Failed to synthesize: {res.stderr}")
+            return False
+
+        # 2. Play the synthesized .wav using your existing aplay wrapper
+        print(f"[TTS LOG] Speaking: '{text}'")
+        return _play_wav_aplay(TEMP_TTS_WAV)
+
+    except Exception as e:
+        print(f"[TTS LOG] Exception during speak_text: {e}")
+        return False

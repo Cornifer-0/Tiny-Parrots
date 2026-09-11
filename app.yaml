@@ -1,3 +1,6 @@
-name: "TinyParrot"
-version: "1.0.0"
-description: "TinyParrot Object Recognition & Audio Companion"
+name: TP
+description: ""
+ports: []
+bricks:
+- arduino:sound_generator: {}
+icon: 🦜
