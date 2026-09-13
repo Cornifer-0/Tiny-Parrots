@@ -4,8 +4,8 @@ import subprocess
 from pathlib import Path
 import cv2
 from arduino.app_utils import Bridge
+import random
 
-# Permanent ALSA Hardware
 PLAYBACK_HW = "plughw:CARD=EarPods,DEV=0"
 PLAYBACK_CARD = "EarPods"
 RECORD_HW = "plughw:CARD=B105,DEV=0"
@@ -17,7 +17,8 @@ AUDIO_DIR = APP_DIR / "audio"
 FOTOS_DIR = APP_DIR / "fotos"
 
 audio_veu = AUDIO_DIR / "veu.wav"
-audio_beep = AUDIO_DIR / "beep.wav"
+audio_beep = AUDIO_DIR / "prerecorded_ai_voice/what_is_that.wav"
+audio_beep2 = AUDIO_DIR / "prerecorded_ai_voice/teach_me.wav"
 
 last_trigger_time = 0
 COOLDOWN_SECONDS = 1.0
@@ -36,11 +37,9 @@ GLOBAL_CAP = None
 def _get_camera_handle():
     global GLOBAL_CAP
     
-    # Return existing open camera if valid
     if GLOBAL_CAP is not None and GLOBAL_CAP.isOpened():
         return GLOBAL_CAP
 
-    # Try /dev/video0-2 on first start only
     for idx in range(3):
         cap = cv2.VideoCapture(idx, cv2.CAP_V4L2)
         if not cap.isOpened():
@@ -51,8 +50,6 @@ def _get_camera_handle():
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
 
-        # Warm up sensor ONCE on cold startup
-        #time.sleep(0.2)
         for _ in range(20):
             cap.read()
 
@@ -78,7 +75,6 @@ def record_frame():
         Bridge.notify("set_status", "idle")
         return None
 
-    # Flush some previous frames, while the audio might have been playing or something else might have been happening .
     for _ in range(4):
         cap.grab()
 
@@ -115,7 +111,6 @@ def _play_wav_aplay(file_path):
         print(f"[AUDIO LOG] Avís en ajustar volum: {ex}")
     """
     
-    # Play audio stream via plughw
     cmd = ["aplay", "-D", PLAYBACK_HW, str(file_path)]
     res = subprocess.run(cmd, capture_output=True, text=True)
     return res.returncode == 0
@@ -135,12 +130,11 @@ def play_audio(filename=None):
             else:
                 print(f"[AUDIO LOG] Fitxer especificat no trobat: {candidate}")
 
-        # Fallback if no filename passed or requested file wasn't found
         if not target_file:
-            if audio_beep.exists():
+            if audio_beep.exists() and random.random() > 0.5:
                 target_file = audio_beep
-            #elif audio_beep.exists():
-             #   target_file = audio_beep
+            else:
+                target_file = audio_beep2
 
         if target_file and target_file.exists():
             #print(f"[AUDIO LOG] Intentant reproduir: {target_file}")
@@ -173,7 +167,6 @@ def record_audio(output_path=str(audio_veu)):
 
     _unmute_mic()
 
-    # Forcem 2 canals (Estèreo) i 48000Hz (format natiu del micròfon Logitech)
     cmd = [
         "arecord", "-D", RECORD_HW,
         "-t", "wav", "-f", "S16_LE", "-r", "48000", "-c", "2",
@@ -225,14 +218,14 @@ def stop_recording():
 
 TEMP_TTS_WAV = Path("/tmp/tts_parrot.wav")
 
-def speak_text(text, pitch=90, speed=160):
+# Not in use
+def speak_text(text, pitch=90, speed=160): 
     """Generates an offline synthetic parrot voice and plays it via aplay."""
     try:
-        # 1. Render speech to a temporary .wav file
         cmd_synth = [
             "espeak-ng",
-            "-p", str(pitch),   # Pitch (0-99, default 50)
-            "-s", str(speed),   # Speed in words per min (default ~175)
+            "-p", str(pitch), 
+            "-s", str(speed), 
             "-w", str(TEMP_TTS_WAV),
             text
         ]
@@ -242,8 +235,7 @@ def speak_text(text, pitch=90, speed=160):
             print(f"[TTS ERROR] Failed to synthesize: {res.stderr}")
             return False
 
-        # 2. Play the synthesized .wav using your existing aplay wrapper
-        print(f"[TTS LOG] Speaking: '{text}'")
+        print(f"[TTS LOG] Speaking: '{text}'") 
         return _play_wav_aplay(TEMP_TTS_WAV)
 
     except Exception as e:

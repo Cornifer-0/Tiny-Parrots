@@ -3,25 +3,39 @@ import time
 from pathlib import Path
 
 from arduino.app_utils import App, Bridge
-from python.utils import play_audio, record_frame, record_audio, stop_recording, speak_text
-from python.vision import classify_image
+from utils import play_audio, record_frame, record_audio, stop_recording, speak_text
+from vision import classify_image
 import random
 
 from edge_impulse_linux.image import ImageImpulseRunner
 
+# Self-healing check for headless OpenCV
+
 
 GENERIC_PARROT_PHRASES = [
-    "Squawk! Polly wants an air-gapped cracker!",
-    "Who's a smart AI? I am! Squawk!",
-    "100 percent local processing, 100 percent private!",
-    "Shh... don't tell the cloud, but I'm completely offline!",
-    "Your data stays right here on this board. Zero uploads!",
-    "No internet? No problem! Air-gapped and proud!",
-    "Ooh, interesting! What do we have here?",
-    "Aha! My local neural net sees something!",
-    "Feathers fluffed and camera ready!",
-    "Flap flap, beep boop, squawk!"
+    "cool",
+    "fascinating",
+    "hmmm",
+    "privacy",
+    "privacy1",
+    "qualcomm1",
+    "squak3",
+    "upc1",
+    "upc2",
 ]
+
+BEFORE_OBJECT_PHRASES = [
+    "i_see_a",
+    "this_is_a"
+]
+
+EATING_PHRASES = [
+    "eat0",
+    "eat1",
+    "eat2",
+    "eat3"
+]
+
 
 
 #print("Hello world!")
@@ -30,6 +44,9 @@ last_speak_time = time.time()
 next_speak_interval = random.randint(10, 20)
 
 last_recognized_object = "None"
+
+APP_DIR = Path(__file__).resolve().parent.parent
+AUDIO_DIR = APP_DIR / "audio"
 
 
 
@@ -62,12 +79,16 @@ def loop():
                 if is_new_object or cooldown_passed:
                     print(f"[AI DETECTED] {result} -> Announcing!")
 
-                    article = "an" if result[0].lower() in ['a', 'e', 'i', 'o', 'u'] else "a"
-    
-                    # Synthesize "This is a" or "This is an"
-                    speak_text(f"This is {article}")
+                    have_it_path = AUDIO_DIR / f"{result}.wav"
+
+                    phrase = random.choice(BEFORE_OBJECT_PHRASES)
+                    if have_it_path.exists():
+                        play_audio(f"prerecorded_ai_voice/{phrase}")
                     
                     play_audio(result)
+
+                    if have_it_path.exists() and random.random() > 0.3:
+                        play_audio("prerecorded_ai_voice/right_question")
 
                     last_recognized_object = result
                     last_object_speak_time = time.time()
@@ -76,8 +97,8 @@ def loop():
                 print("Don't see nothing")
 
             if current_time - last_speak_time >= next_speak_interval:
-                phrase = get_random_parrot_phrase()
-                speak_text(phrase)
+                phrase = random.choice(GENERIC_PARROT_PHRASES)
+                play_audio(f"prerecorded_ai_voice/{phrase}")
                 last_speak_time = current_time
                 next_speak_interval = random.randint(15, 25)
 
@@ -88,7 +109,7 @@ def loop():
 
 def on_button_event(but):    
     global last_recognized_object
-    if but == "C_pressed":
+    if but == "B_pressed":
 
         if(last_recognized_object == "None"):
             play_audio("beep")
@@ -97,8 +118,12 @@ def on_button_event(but):
             
         path_audio = Path(f"/app/audio/{last_recognized_object}.wav")
         record_audio(str(path_audio))
-    if but == "C_released":
+    elif but == "B_released":
         stop_recording()
+    elif but == "C_pressed":
+        phrase = random.choice(EATING_PHRASES)
+        play_audio(f"prerecorded_ai_voice/{phrase}")
+    
 
 
 def get_random_parrot_phrase():
@@ -119,6 +144,8 @@ def on_button_event(but):
 Bridge.notify("set_status", "idle")
 
 Bridge.provide("button_event", on_button_event)
+
+play_audio("prerecorded_ai_voice/awake_and_ready")
 
 # See: https://docs.arduino.cc/software/app-lab/tutorials/getting-started/#app-run
 App.run(user_loop=loop)
