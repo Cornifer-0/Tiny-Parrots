@@ -1,6 +1,6 @@
 # 🦜 TinyParrot
 Pol Creixans Comerma
-  FIB, GEI student
+  FIB, Computer Engineering student
 Abel Riba Alcón
   ETSEIB, Industrial Engineering student
 
