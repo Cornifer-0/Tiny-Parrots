@@ -1,4 +1,5 @@
 🦜 TinyParrot — Private & Safe AI Companion
+
 > **An educational robotic companion built with Privacy by Design.** 
 > 100% offline machine learning that listens, learns, and interacts without ever sending your data to the cloud.
 ---
@@ -9,9 +10,12 @@
 ---
 👥 Project Creators
 ---
-Creator	Role / Institution
-Pol Creixans Comerma	Computer Engineering Student @ FIB (Facultat d'Informàtica de Barcelona)
-Abel Riba Alcón	Industrial Engineering Student @ ETSEIB (Escola Tècnica Superior d'Enginyeria Industrial de Barcelona)
+Creator - Role / Institution
+
+Pol Creixans Comerma - Computer Engineering Student @ FIB
+
+
+Abel Riba Alcón	Industrial Engineering Student @ ETSEIB
 
 <img width="2160" height="1620" alt="Image" src="https://github.com/user-attachments/assets/166fb60d-ac6d-45fa-b377-2a992468f57b" />
 
